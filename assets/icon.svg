@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Printer body -->
+  <rect x="96" y="160" width="320" height="192" rx="16" ry="16" fill="#3498db" />
+  
+  <!-- Printer top -->
+  <rect x="128" y="64" width="256" height="96" rx="8" ry="8" fill="#ecf0f1" />
+  
+  <!-- Printer output tray -->
+  <rect x="128" y="352" width="256" height="96" rx="8" ry="8" fill="#ecf0f1" />
+  
+  <!-- Control panel -->
+  <rect x="320" y="192" width="64" height="32" rx="4" ry="4" fill="#2c3e50" />
+  
+  <!-- Buttons -->
+  <circle cx="336" cy="208" r="8" fill="#27ae60" />
+  <circle cx="368" cy="208" r="8" fill="#e74c3c" />
+  
+  <!-- Paper -->
+  <rect x="160" y="384" width="192" height="32" fill="white" />
+  
+  <!-- Status light -->
+  <circle cx="144" cy="208" r="8" fill="#2ecc71" />
+</svg>

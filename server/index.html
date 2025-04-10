@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Printer Sharing Server</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #f5f5f5;
+        color: #333;
+      }
+      .container {
+        max-width: 1000px;
+        margin: 0 auto;
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+      }
+      h1,
+      h2,
+      h3 {
+        color: #2c3e50;
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #eee;
+      }
+      .status-indicator {
+        display: flex;
+        align-items: center;
+      }
+      .status-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+      .status-online {
+        background-color: #2ecc71;
+      }
+      .status-offline {
+        background-color: #e74c3c;
+      }
+      .server-info {
+        background-color: #f8f9fa;
+        border-radius: 4px;
+        padding: 15px;
+        margin-bottom: 20px;
+      }
+      .info-row {
+        display: flex;
+        margin-bottom: 8px;
+      }
+      .info-label {
+        font-weight: bold;
+        width: 120px;
+      }
+      .printer-list {
+        margin-top: 20px;
+      }
+      .printer-item {
+        background-color: #fff;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 15px;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .printer-info {
+        flex: 1;
+      }
+      .printer-name {
+        font-weight: bold;
+        font-size: 16px;
+        margin-bottom: 5px;
+      }
+      .printer-details {
+        color: #666;
+        font-size: 14px;
+      }
+      .printer-status {
+        display: flex;
+        align-items: center;
+        font-size: 14px;
+        padding: 4px 8px;
+        border-radius: 4px;
+      }
+      .status-ready {
+        background-color: #e8f5e9;
+        color: #2e7d32;
+      }
+      .status-busy {
+        background-color: #fff8e1;
+        color: #f57f17;
+      }
+      .status-error {
+        background-color: #ffebee;
+        color: #c62828;
+      }
+      .job-list {
+        margin-top: 20px;
+      }
+      .job-item {
+        background-color: #fff;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 15px;
+        margin-bottom: 10px;
+      }
+      .job-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      .job-title {
+        font-weight: bold;
+      }
+      .job-time {
+        color: #666;
+        font-size: 14px;
+      }
+      .job-details {
+        color: #666;
+        font-size: 14px;
+      }
+      .refresh-btn {
+        background-color: #3498db;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+      .refresh-btn:hover {
+        background-color: #2980b9;
+      }
+      .tabs {
+        display: flex;
+        border-bottom: 1px solid #ddd;
+        margin-bottom: 20px;
+      }
+      .tab {
+        padding: 10px 20px;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+      }
+      .tab.active {
+        border-bottom: 2px solid #3498db;
+        font-weight: bold;
+      }
+      .tab-content {
+        display: none;
+      }
+      .tab-content.active {
+        display: block;
+      }
+      .no-items {
+        text-align: center;
+        padding: 20px;
+        color: #666;
+        font-style: italic;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>Printer Sharing Server</h1>
+        <div class="status-indicator">
+          <div id="status-dot" class="status-dot status-online"></div>
+          <span id="status-text">Server Online</span>
+        </div>
+      </div>
+
+      <div class="server-info">
+        <div class="info-row">
+          <div class="info-label">Server IP:</div>
+          <div id="server-ip">Loading...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">Port:</div>
+          <div id="server-port">9631</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">Connected Clients:</div>
+          <div id="connected-clients">0</div>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" data-tab="printers">Shared Printers</div>
+        <div class="tab" data-tab="jobs">Print Jobs</div>
+        <div class="tab" data-tab="settings">Settings</div>
+      </div>
+
+      <div id="printers-tab" class="tab-content active">
+        <div class="header">
+          <h2>Available Printers</h2>
+          <button id="refresh-printers" class="refresh-btn">Refresh</button>
+        </div>
+
+        <div id="printer-list" class="printer-list">
+          <div class="no-items">Loading printers...</div>
+        </div>
+      </div>
+
+      <div id="jobs-tab" class="tab-content">
+        <div class="header">
+          <h2>Recent Print Jobs</h2>
+          <button id="refresh-jobs" class="refresh-btn">Refresh</button>
+        </div>
+
+        <div id="job-list" class="job-list">
+          <div class="no-items">No recent print jobs</div>
+        </div>
+      </div>
+
+      <div id="settings-tab" class="tab-content">
+        <h2>Server Settings</h2>
+
+        <div style="margin-top: 20px">
+          <h3>Shared Printers</h3>
+          <p>Select which printers to share with clients:</p>
+          <div id="printer-sharing-options">
+            <div class="no-items">Loading printers...</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 30px">
+          <h3>Network Settings</h3>
+          <div style="margin-bottom: 15px">
+            <label for="server-port-input">Server Port:</label>
+            <input
+              type="number"
+              id="server-port-input"
+              value="9631"
+              min="1024"
+              max="65535"
+            />
+          </div>
+          <button id="save-settings" class="refresh-btn">Save Settings</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const { ipcRenderer } = require("electron");
+      const os = require("os");
+
+      // Get local IP address
+      function getLocalIpAddress() {
+        const interfaces = os.networkInterfaces();
+        for (const name of Object.keys(interfaces)) {
+          for (const iface of interfaces[name]) {
+            if (iface.family === "IPv4" && !iface.internal) {
+              return iface.address;
+            }
+          }
+        }
+        return "127.0.0.1";
+      }
+
+      // Update server info
+      document.getElementById("server-ip").textContent = getLocalIpAddress();
+
+      // Tab switching
+      const tabs = document.querySelectorAll(".tab");
+      tabs.forEach((tab) => {
+        tab.addEventListener("click", () => {
+          // Remove active class from all tabs and contents
+          document
+            .querySelectorAll(".tab")
+            .forEach((t) => t.classList.remove("active"));
+          document
+            .querySelectorAll(".tab-content")
+            .forEach((c) => c.classList.remove("active"));
+
+          // Add active class to clicked tab and corresponding content
+          tab.classList.add("active");
+          const tabName = tab.getAttribute("data-tab");
+          document.getElementById(`${tabName}-tab`).classList.add("active");
+        });
+      });
+
+      // IPC communication with main process
+      ipcRenderer.on("server-status", (event, status) => {
+        const statusDot = document.getElementById("status-dot");
+        const statusText = document.getElementById("status-text");
+
+        if (status === "online") {
+          statusDot.className = "status-dot status-online";
+          statusText.textContent = "Server Online";
+        } else {
+          statusDot.className = "status-dot status-offline";
+          statusText.textContent = "Server Offline";
+        }
+      });
+
+      ipcRenderer.on("connected-clients", (event, count) => {
+        document.getElementById("connected-clients").textContent = count;
+      });
+
+      // Printer list
+      ipcRenderer.on("printers-list", (event, printers) => {
+        const printerList = document.getElementById("printer-list");
+        const printerSharingOptions = document.getElementById(
+          "printer-sharing-options"
+        );
+
+        if (printers.length === 0) {
+          printerList.innerHTML =
+            '<div class="no-items">No printers found</div>';
+          printerSharingOptions.innerHTML =
+            '<div class="no-items">No printers found</div>';
+          return;
+        }
+
+        // Update printer list
+        printerList.innerHTML = "";
+        printers.forEach((printer) => {
+          const printerItem = document.createElement("div");
+          printerItem.className = "printer-item";
+
+          const statusClass =
+            printer.status === "ready"
+              ? "status-ready"
+              : printer.status === "busy"
+              ? "status-busy"
+              : "status-error";
+
+          printerItem.innerHTML = `
+          <div class="printer-info">
+            <div class="printer-name">${printer.name}</div>
+            <div class="printer-details">${
+              printer.description || "No description"
+            }</div>
+          </div>
+          <div class="printer-status ${statusClass}">
+            ${printer.status.charAt(0).toUpperCase() + printer.status.slice(1)}
+          </div>
+        `;
+
+          printerList.appendChild(printerItem);
+        });
+
+        // Update printer sharing options
+        printerSharingOptions.innerHTML = "";
+        printers.forEach((printer) => {
+          const option = document.createElement("div");
+          option.style.margin = "10px 0";
+          option.innerHTML = `
+          <label>
+            <input type="checkbox" class="printer-share-checkbox" 
+                  data-printer-name="${printer.name}" ${
+            printer.shared ? "checked" : ""
+          }>
+            ${printer.name}
+          </label>
+        `;
+          printerSharingOptions.appendChild(option);
+        });
+      });
+
+      // Print jobs
+      ipcRenderer.on("print-jobs", (event, jobs) => {
+        const jobList = document.getElementById("job-list");
+
+        if (jobs.length === 0) {
+          jobList.innerHTML =
+            '<div class="no-items">No recent print jobs</div>';
+          return;
+        }
+
+        jobList.innerHTML = "";
+        jobs.forEach((job) => {
+          const jobItem = document.createElement("div");
+          jobItem.className = "job-item";
+
+          const date = new Date(job.timestamp);
+          const formattedDate = date.toLocaleString();
+
+          jobItem.innerHTML = `
+          <div class="job-header">
+            <div class="job-title">${job.documentName}</div>
+            <div class="job-time">${formattedDate}</div>
+          </div>
+          <div class="job-details">
+            <div>Printer: ${job.printerName}</div>
+            <div>Status: ${job.status}</div>
+            <div>Pages: ${job.pages}</div>
+            <div>Client: ${job.clientName}</div>
+          </div>
+        `;
+
+          jobList.appendChild(jobItem);
+        });
+      });
+
+      // Button event listeners
+      document
+        .getElementById("refresh-printers")
+        .addEventListener("click", () => {
+          ipcRenderer.send("refresh-printers");
+        });
+
+      document.getElementById("refresh-jobs").addEventListener("click", () => {
+        ipcRenderer.send("refresh-jobs");
+      });
+
+      document.getElementById("save-settings").addEventListener("click", () => {
+        const port = document.getElementById("server-port-input").value;
+
+        // Get shared printers
+        const sharedPrinters = [];
+        document
+          .querySelectorAll(".printer-share-checkbox")
+          .forEach((checkbox) => {
+            if (checkbox.checked) {
+              sharedPrinters.push(checkbox.getAttribute("data-printer-name"));
+            }
+          });
+
+        ipcRenderer.send("save-settings", { port, sharedPrinters });
+      });
+
+      // Initial data load
+      ipcRenderer.send("refresh-printers");
+      ipcRenderer.send("refresh-jobs");
+    </script>
+  </body>
+</html>

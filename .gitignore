@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# Production build
+dist/
+out/
+build/
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE - VSCode
+.vscode/
+*.code-workspace
+.history/
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Electron specific
+*.log
+.idea/
+*.iml
+
+# Windows specific
+*.exe
+*.msi
+*.msix
+*.msm
+*.msp
+
+# macOS specific
+.AppleDouble
+.LSOverride
+._*
+
+# Linux specific
+*~
+.directory
+.Trash-*
