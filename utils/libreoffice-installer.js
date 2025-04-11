@@ -7,11 +7,11 @@ const fetch = require("node-fetch");
 const log = require("electron-log");
 
 // LibreOffice installer configuration
-const LIBREOFFICE_VERSION = "7.6.4"; // Latest stable version
+const LIBREOFFICE_VERSION = "25.2.2"; // Latest stable version
 
 // Platform-specific installer URLs
 const INSTALLER_URLS = {
-  win32: `https://download.documentfoundation.org/libreoffice/stable/${LIBREOFFICE_VERSION}/win/x86_64/LibreOffice_${LIBREOFFICE_VERSION}_Win_x64.msi`,
+  win32: `https://download.documentfoundation.org/libreoffice/stable/${LIBREOFFICE_VERSION}/win/x86_64/LibreOffice_${LIBREOFFICE_VERSION}_Win_x86-64.msi`,
   darwin: `https://download.documentfoundation.org/libreoffice/stable/${LIBREOFFICE_VERSION}/mac/x86_64/LibreOffice_${LIBREOFFICE_VERSION}_MacOS_x86-64.dmg`,
   linux: `https://download.documentfoundation.org/libreoffice/stable/${LIBREOFFICE_VERSION}/deb/x86_64/LibreOffice_${LIBREOFFICE_VERSION}_Linux_x86-64_deb.tar.gz`,
 };
@@ -115,8 +115,11 @@ class LibreOfficeInstaller {
 
         switch (this.platform) {
           case "win32":
-            command = "msiexec";
-            args = ["/i", this.installerPath, "/qn", "/norestart"];
+            command = "powershell.exe";
+            args = [
+              "-Command",
+              `Start-Process msiexec.exe -Wait -ArgumentList '/i "${this.installerPath}" /qn /norestart' -Verb RunAs`,
+            ];
             break;
           case "darwin":
             command = "hdiutil";
@@ -140,8 +143,11 @@ class LibreOfficeInstaller {
             return;
         }
 
-        execFile(command, args, (error) => {
+        execFile(command, args, (error, stdout, stderr) => {
           if (error) {
+            log.error("Installation process error:", error);
+            if (stdout) log.error("Installation stdout:", stdout);
+            if (stderr) log.error("Installation stderr:", stderr);
             reject(error);
           } else {
             if (this.platform === "darwin") {
