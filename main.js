@@ -7,13 +7,25 @@ const http = require("http");
 const socketIO = require("socket.io");
 const multer = require("multer");
 const Store = require("electron-store");
-const printer = require("node-printer");
+const { getPrinters } = require("pdf-to-printer");
+const { print } = require("pdf-to-printer");
 const FormData = require("form-data");
 const fetch = require("node-fetch");
 const { globalShortcut } = require("electron");
 const log = require("electron-log");
+const libreOfficeInstaller = require("./utils/libreoffice-installer");
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Ensure LibreOffice is installed
+  try {
+    await libreOfficeInstaller.install();
+  } catch (error) {
+    log.error("Failed to install LibreOffice:", error);
+    dialog.showErrorBox(
+      "Installation Error",
+      "Failed to install LibreOffice. Some document conversion features may not work."
+    );
+  }
   globalShortcut.register("CommandOrControl+Shift+I", () => {
     const focusedWindow = BrowserWindow.getFocusedWindow();
     if (focusedWindow) focusedWindow.webContents.toggleDevTools();
@@ -156,17 +168,16 @@ async function startServer() {
   // Express routes
   expressApp.get("/api/printers", async (req, res) => {
     try {
-      const allPrinters = printer.getPrinters();
+      const allPrinters = await getPrinters();
       const sharedPrinters = store.get("sharedPrinters");
 
       const printers = allPrinters
-        .filter((p) => sharedPrinters.includes(p.name))
-        .map((p) => ({
-          name: p.name,
-          description: p.description || "",
-          status: p.status || "ready",
+        .filter((printer) => sharedPrinters.includes(printer.name))
+        .map((printer) => ({
+          name: printer.name,
+          description: printer.description || "",
+          status: "ready", // Default status
           shared: true,
-          options: p.options || {},
         }));
 
       res.json(printers);
@@ -198,18 +209,10 @@ async function startServer() {
         // Add other options as needed
       }
 
-      // Print the document using node-printer
-      const printerInstance = new printer.Printer(printer);
-      const printJob = printerInstance.printFile({
-        filename: filePath,
-        docname: req.file.originalname,
+      // Print the document
+      await print(filePath, {
+        printer,
         ...printOptions,
-      });
-
-      // Wait for print job to complete
-      await new Promise((resolve, reject) => {
-        printJob.on("sent", () => resolve());
-        printJob.on("error", (error) => reject(error));
       });
 
       // Add to recent jobs
@@ -466,6 +469,9 @@ async function fetchPrinters() {
   }
 }
 
+// Import file converter utility
+const { isOfficeDocument, convertToPdf } = require("./utils/file-converter");
+
 // Print document
 async function printDocument(printer, filePath, options, clientName) {
   try {
@@ -476,9 +482,44 @@ async function printDocument(printer, filePath, options, clientName) {
     const serverAddress = store.get("lastServerAddress");
     const serverPort = store.get("serverPort");
 
+    // Check if file is an Office document and convert to PDF if needed
+    let fileToSend = filePath;
+    if (isOfficeDocument(filePath)) {
+      // Notify client window about conversion
+      if (clientWindow) {
+        clientWindow.webContents.send("conversion-status", {
+          status: "converting",
+          fileName: path.basename(filePath),
+        });
+      }
+
+      try {
+        fileToSend = await convertToPdf(filePath);
+
+        // Notify client window about successful conversion
+        if (clientWindow) {
+          clientWindow.webContents.send("conversion-status", {
+            status: "converted",
+            fileName: path.basename(fileToSend),
+          });
+        }
+      } catch (conversionError) {
+        // Notify client window about conversion error
+        if (clientWindow) {
+          clientWindow.webContents.send("conversion-status", {
+            status: "error",
+            error: conversionError.message,
+          });
+        }
+        throw new Error(
+          `Failed to convert document: ${conversionError.message}`
+        );
+      }
+    }
+
     // Create form data using form-data package
     const formData = new FormData();
-    formData.append("file", fs.createReadStream(filePath));
+    formData.append("file", fs.createReadStream(fileToSend));
     formData.append("printer", printer);
     formData.append("options", JSON.stringify(options));
     formData.append("clientName", clientName);

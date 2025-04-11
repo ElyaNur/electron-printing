@@ -241,6 +241,42 @@
       .option-row .option-group {
         flex: 1;
       }
+      .conversion-status {
+        margin-top: 15px;
+        padding: 10px 15px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        background-color: #e3f2fd;
+        border-left: 4px solid #2196f3;
+      }
+      .conversion-status.error {
+        background-color: #ffebee;
+        border-left-color: #f44336;
+      }
+      .conversion-status.success {
+        background-color: #e8f5e9;
+        border-left-color: #4caf50;
+      }
+      .conversion-icon {
+        margin-right: 10px;
+      }
+      .spinner {
+        width: 20px;
+        height: 20px;
+        border: 3px solid rgba(33, 150, 243, 0.3);
+        border-radius: 50%;
+        border-top-color: #2196f3;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .option-row .option-group {
+        flex: 1;
+      }
     </style>
   </head>
   <body>
@@ -310,13 +346,14 @@
           <div class="file-upload" id="file-upload">
             <p>Drag & drop a file here or click to select</p>
             <p class="file-info">
-              Supported formats: PDF, DOC, DOCX, TXT, PNG, JPG
+              Supported formats: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, TXT, PNG,
+              JPG
             </p>
             <input
               type="file"
               id="file-upload-input"
               class="file-upload-input"
-              accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg"
             />
           </div>
 
@@ -362,6 +399,17 @@
                 </select>
               </div>
             </div>
+          </div>
+
+          <div
+            id="conversion-status"
+            class="conversion-status"
+            style="display: none"
+          >
+            <div class="conversion-icon">
+              <div class="spinner"></div>
+            </div>
+            <div class="conversion-message">Converting document...</div>
           </div>
 
           <div style="margin-top: 20px">
@@ -566,6 +614,37 @@
           connectionForm.style.display = "block";
           connectedView.style.display = "none";
         }
+      });
+
+      // Handle document conversion status
+      const conversionStatus = document.getElementById("conversion-status");
+      const conversionMessage = document.querySelector(".conversion-message");
+
+      ipcRenderer.on("conversion-status", (event, data) => {
+        if (data.status === "converting") {
+          conversionStatus.className = "conversion-status";
+          conversionMessage.textContent = `Converting ${data.fileName} to PDF...`;
+          conversionStatus.style.display = "flex";
+        } else if (data.status === "converted") {
+          conversionStatus.className = "conversion-status success";
+          conversionMessage.textContent = `Successfully converted ${data.fileName} to PDF`;
+          // Hide the message after 5 seconds
+          setTimeout(() => {
+            conversionStatus.style.display = "none";
+          }, 5000);
+        } else if (data.status === "error") {
+          conversionStatus.className = "conversion-status error";
+          conversionMessage.textContent = `Error converting document: ${data.error}`;
+          // Keep error message visible until next print attempt
+        }
+      });
+
+      // Clear conversion status when starting a new print job
+      printBtn.addEventListener("click", () => {
+        // Existing code...
+
+        // Hide any previous conversion status
+        conversionStatus.style.display = "none";
       });
 
       ipcRenderer.on("printers-list", (event, printers) => {
