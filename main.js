@@ -23,6 +23,10 @@ const { globalShortcut } = require("electron");
 const log = require("electron-log");
 const libreOfficeInstaller = require("./utils/libreoffice-installer");
 
+if (require("electron-squirrel-startup")) {
+  app.quit();
+}
+
 app.whenReady().then(async () => {
   createTray();
   // Ensure LibreOffice is installed before proceeding
