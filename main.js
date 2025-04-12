@@ -282,6 +282,11 @@ async function startServer() {
         serverWindow.webContents.send("print-jobs", recentJobs);
       }
 
+      // Notify client window about new job
+      if (clientWindow) {
+        clientWindow.webContents.send("print-jobs", recentJobs);
+      }
+
       res.json({ success: true });
     } catch (error) {
       log.error("Error printing document:", error); // Log the error for debuggin
@@ -353,6 +358,10 @@ async function startServer() {
       serverWindow.webContents.send("client-list", connectedClients);
     }
 
+    // Send current print jobs to newly connected client
+    const recentJobs = store.get("recentJobs");
+    socket.emit("print-jobs", recentJobs);
+
     // Handle client disconnect
     socket.on("disconnect", () => {
       console.log("Client disconnected:", socket.id);
@@ -384,6 +393,26 @@ async function startServer() {
       socket.disconnect(true);
     }
   });
+
+  // Handle job refresh requests from client
+  ipcMain.on("refresh-jobs", (event) => {
+    const recentJobs = store.get("recentJobs");
+    if (event.sender === clientWindow?.webContents) {
+      clientWindow.webContents.send("print-jobs", recentJobs);
+    } else if (event.sender === serverWindow?.webContents) {
+      serverWindow.webContents.send("print-jobs", recentJobs);
+    }
+  });
+
+  // Handle job updates from server to client
+  function broadcastJobUpdate(jobs) {
+    if (serverWindow) {
+      serverWindow.webContents.send("print-jobs", jobs);
+    }
+    if (clientWindow) {
+      clientWindow.webContents.send("print-jobs", jobs);
+    }
+  }
 
   // Start the server
   try {

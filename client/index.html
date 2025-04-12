@@ -509,6 +509,84 @@
     <script>
       const { ipcRenderer } = require("electron");
 
+      // Local storage key for print jobs
+      const LOCAL_JOBS_KEY = "localPrintJobs";
+
+      // Function to get local jobs
+      function getLocalJobs() {
+        try {
+          return JSON.parse(localStorage.getItem(LOCAL_JOBS_KEY) || "[]");
+        } catch (error) {
+          console.error("Error reading local jobs:", error);
+          return [];
+        }
+      }
+
+      // Function to save local jobs
+      function saveLocalJobs(jobs) {
+        try {
+          localStorage.setItem(LOCAL_JOBS_KEY, JSON.stringify(jobs));
+        } catch (error) {
+          console.error("Error saving local jobs:", error);
+        }
+      }
+
+      // Function to add a new print job
+      function addPrintJob(documentName, printerName, pages) {
+        const jobs = getLocalJobs();
+        const newJob = {
+          documentName,
+          printerName,
+          status: "Submitted",
+          timestamp: Date.now(),
+          pages,
+        };
+        jobs.push(newJob);
+        saveLocalJobs(jobs);
+        renderPrintJobs(jobs);
+      }
+
+      // Function to render print jobs
+      function renderPrintJobs(jobs) {
+        const jobList = document.getElementById("job-list");
+
+        if (!jobs || jobs.length === 0) {
+          jobList.innerHTML = '<div class="no-items">No print jobs</div>';
+          return;
+        }
+
+        jobList.innerHTML = "";
+        jobs.forEach((job) => {
+          const jobItem = document.createElement("div");
+          jobItem.className = "job-item";
+
+          const date = new Date(job.timestamp);
+          const formattedDate = date.toLocaleString();
+
+          jobItem.innerHTML = `
+            <div class="job-header">
+              <div class="job-title">${job.documentName}</div>
+              <div class="job-time">${formattedDate}</div>
+            </div>
+            <div class="job-details">
+              <div>Printer: ${job.printerName}</div>
+              <div>Status: ${job.status}</div>
+              <div>Pages: ${job.pages || "N/A"}</div>
+            </div>
+          `;
+
+          jobList.appendChild(jobItem);
+        });
+      }
+
+      // Initialize jobs list on load
+      renderPrintJobs(getLocalJobs());
+
+      // Refresh jobs button click handler
+      document.getElementById("refresh-jobs").addEventListener("click", () => {
+        renderPrintJobs(getLocalJobs());
+      });
+
       // DOM Elements
       const statusDot = document.getElementById("status-dot");
       const statusText = document.getElementById("status-text");
@@ -728,26 +806,25 @@
 
       // Print button
       printBtn.addEventListener("click", () => {
-        const selectedPrinter = printerSelect.value;
         const filePath = printBtn.getAttribute("data-file-path");
+        const selectedPrinter = printerSelect.value;
         const copies = document.getElementById("copies").value;
         const orientation = document.getElementById("orientation").value;
         const colorMode = document.getElementById("color-mode").value;
         const paperSize = document.getElementById("paper-size").value;
 
-        if (!selectedPrinter) {
-          alert("Please select a printer");
+        if (!filePath || !selectedPrinter) {
+          alert("Please select a file and printer");
           return;
         }
 
-        if (!filePath) {
-          alert("Please select a file to print");
-          return;
-        }
+        // Add job to local tracking
+        addPrintJob(fileName.textContent, selectedPrinter, copies);
 
+        // Send print request to server
         ipcRenderer.send("print-document", {
-          printer: selectedPrinter,
           filePath,
+          printer: selectedPrinter,
           options: {
             copies: parseInt(copies),
             orientation,
@@ -755,6 +832,12 @@
             paperSize,
           },
         });
+
+        // Clear file selection
+        fileUploadInput.value = "";
+        selectedFileInfo.style.display = "none";
+        printBtn.disabled = true;
+        printBtn.removeAttribute("data-file-path");
       });
 
       // Printer selection change
@@ -777,6 +860,36 @@
       });
 
       // IPC communication with main process
+      // Handle print jobs updates
+      ipcRenderer.on("print-jobs", (event, jobs) => {
+        const jobList = document.getElementById("job-list");
+
+        if (jobs.length === 0) {
+          jobList.innerHTML = '<div class="no-items">No print jobs</div>';
+          return;
+        }
+
+        jobList.innerHTML = jobs
+          .map(
+            (job) => `
+          <div class="job-item">
+            <div class="job-header">
+              <span class="job-title">${job.documentName}</span>
+              <span class="job-time">${new Date(
+                job.timestamp
+              ).toLocaleString()}</span>
+            </div>
+            <div class="job-details">
+              <p>Printer: ${job.printerName}</p>
+              <p>Status: ${job.status}</p>
+              <p>Pages: ${job.pages}</p>
+            </div>
+          </div>
+        `
+          )
+          .join("");
+      });
+
       ipcRenderer.on("file-preview", (event, previewData) => {
         // Update preview after conversion
         if (previewData.type === "pdf") {
