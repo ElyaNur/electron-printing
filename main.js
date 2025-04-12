@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu } = require("electron");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
@@ -16,6 +16,7 @@ const log = require("electron-log");
 const libreOfficeInstaller = require("./utils/libreoffice-installer");
 
 app.whenReady().then(async () => {
+  createTray();
   // Ensure LibreOffice is installed before proceeding
   // This will show a blocking progress UI to the user
   try {
@@ -73,6 +74,41 @@ let isServer = false;
 let isClient = false;
 let connectedClients = [];
 let clientSocket = null;
+let tray = null;
+
+// Create system tray
+function createTray() {
+  tray = new Tray(path.join(__dirname, "assets", "icon.png"));
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: "Show",
+      click: () => {
+        if (mainWindow) mainWindow.show();
+        if (serverWindow) serverWindow.show();
+        if (clientWindow) clientWindow.show();
+      },
+    },
+    {
+      label: "Hide",
+      click: () => {
+        if (mainWindow) mainWindow.hide();
+        if (serverWindow) serverWindow.hide();
+        if (clientWindow) clientWindow.hide();
+      },
+    },
+    { type: "separator" },
+    { label: "Quit", click: () => app.quit() },
+  ]);
+
+  tray.setToolTip("Electron Printing");
+  tray.setContextMenu(contextMenu);
+
+  tray.on("double-click", () => {
+    if (mainWindow) mainWindow.show();
+    if (serverWindow) serverWindow.show();
+    if (clientWindow) clientWindow.show();
+  });
+}
 
 // Create main window
 function createMainWindow() {
@@ -88,8 +124,9 @@ function createMainWindow() {
 
   mainWindow.loadFile(path.join(__dirname, "index.html"));
 
-  mainWindow.on("closed", () => {
-    mainWindow = null;
+  mainWindow.on("close", (event) => {
+    event.preventDefault();
+    mainWindow.hide();
   });
 }
 
@@ -107,10 +144,9 @@ function createServerWindow() {
 
   serverWindow.loadFile(path.join(__dirname, "server", "index.html"));
 
-  serverWindow.on("closed", () => {
-    stopServer();
-    serverWindow = null;
-    isServer = false;
+  serverWindow.on("close", (event) => {
+    event.preventDefault();
+    serverWindow.hide();
   });
 
   isServer = true;
@@ -131,10 +167,9 @@ function createClientWindow() {
 
   clientWindow.loadFile(path.join(__dirname, "client", "index.html"));
 
-  clientWindow.on("closed", () => {
-    disconnectFromServer();
-    clientWindow = null;
-    isClient = false;
+  clientWindow.on("close", (event) => {
+    event.preventDefault();
+    clientWindow.hide();
   });
 
   isClient = true;
@@ -422,14 +457,19 @@ async function connectToServer(serverAddress, serverPort, clientName) {
 
 // Disconnect from server
 function disconnectFromServer() {
-  if (clientSocket) {
-    clientSocket.disconnect();
+  try {
+    // Check if socket exists and is connected before disconnecting
+    if (clientSocket && clientSocket.connected) {
+      clientSocket.disconnect();
+    }
     clientSocket = null;
-  }
 
-  // Notify client window that connection is closed
-  if (clientWindow) {
-    clientWindow.webContents.send("connection-status", "disconnected");
+    // Only notify window if it exists and hasn't been destroyed
+    if (clientWindow && !clientWindow.isDestroyed()) {
+      clientWindow.webContents.send("connection-status", "disconnected");
+    }
+  } catch (error) {
+    log.error("Error during disconnect:", error);
   }
 }
 
@@ -472,8 +512,12 @@ async function fetchPrinters() {
   }
 }
 
-// Import file converter utility
+// Import file converter and preview utilities
 const { isOfficeDocument, convertToPdf } = require("./utils/file-converter");
+const {
+  generatePreview,
+  updatePreviewAfterConversion,
+} = require("./utils/file-preview");
 
 // Print document
 async function printDocument(printer, filePath, options, clientName) {
@@ -505,6 +549,13 @@ async function printDocument(printer, filePath, options, clientName) {
             status: "converted",
             fileName: path.basename(fileToSend),
           });
+
+          // Send updated preview after conversion
+          const previewData = updatePreviewAfterConversion(
+            filePath,
+            fileToSend
+          );
+          clientWindow.webContents.send("file-preview", previewData);
         }
       } catch (conversionError) {
         // Notify client window about conversion error
@@ -603,9 +654,31 @@ app.on("ready", () => {
   }
 });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
+app.on("window-all-closed", (event) => {
+  event.preventDefault();
+});
+
+app.on("before-quit", () => {
+  // Clean up resources
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+  if (serverWindow) {
+    stopServer();
+    serverWindow.destroy();
+    serverWindow = null;
+    isServer = false;
+  }
+  if (clientWindow) {
+    disconnectFromServer();
+    clientWindow.destroy();
+    clientWindow = null;
+    isClient = false;
+  }
+  if (mainWindow) {
+    mainWindow.destroy();
+    mainWindow = null;
   }
 });
 
@@ -688,6 +761,58 @@ ipcMain.on("disconnect-from-server", () => {
 ipcMain.on("print-document", async (event, { printer, filePath, options }) => {
   const clientName = store.get("lastClientName");
   await printDocument(printer, filePath, options, clientName);
+});
+
+// File preview handling
+ipcMain.handle("generate-preview", async (event, filePath) => {
+  try {
+    // Generate preview data
+    const previewData = await generatePreview(filePath);
+
+    // If the file needs conversion, start the conversion process
+    if (previewData.type === "converting") {
+      // Notify client window about conversion
+      if (clientWindow) {
+        clientWindow.webContents.send("conversion-status", {
+          status: "converting",
+          fileName: path.basename(filePath),
+        });
+      }
+
+      try {
+        // Convert the document
+        const convertedPath = await convertToPdf(filePath);
+
+        // Notify client window about successful conversion
+        if (clientWindow) {
+          clientWindow.webContents.send("conversion-status", {
+            status: "converted",
+            fileName: path.basename(convertedPath),
+          });
+        }
+
+        // Return updated preview data with the converted file
+        return updatePreviewAfterConversion(filePath, convertedPath);
+      } catch (conversionError) {
+        // Notify client window about conversion error
+        if (clientWindow) {
+          clientWindow.webContents.send("conversion-status", {
+            status: "error",
+            error: conversionError.message,
+          });
+        }
+        throw conversionError;
+      }
+    }
+
+    return previewData;
+  } catch (error) {
+    console.error("Error generating preview:", error);
+    return {
+      type: "error",
+      error: error.message,
+    };
+  }
 });
 
 ipcMain.handle("get-hostname", () => {

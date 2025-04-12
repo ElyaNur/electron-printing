@@ -361,6 +361,74 @@
             <p>Selected file: <span id="file-name"></span></p>
           </div>
 
+          <div
+            id="file-preview-container"
+            style="margin-top: 15px; display: none"
+          >
+            <h3>File Preview</h3>
+            <div
+              id="preview-loading"
+              style="display: none; text-align: center; padding: 20px"
+            >
+              <div class="spinner" style="margin: 0 auto"></div>
+              <p>Loading preview...</p>
+            </div>
+            <div
+              id="preview-error"
+              style="
+                display: none;
+                color: #e74c3c;
+                padding: 10px;
+                background-color: #ffebee;
+                border-radius: 4px;
+              "
+            >
+              <p>Error loading preview</p>
+            </div>
+            <div
+              id="preview-content"
+              style="
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                overflow: hidden;
+                max-height: 400px;
+              "
+            >
+              <!-- Image preview -->
+              <img
+                id="image-preview"
+                style="max-width: 100%; max-height: 400px; display: none"
+              />
+
+              <!-- PDF preview -->
+              <iframe
+                id="pdf-preview"
+                style="width: 100%; height: 400px; border: none; display: none"
+              ></iframe>
+
+              <!-- Text preview -->
+              <pre
+                id="text-preview"
+                style="
+                  margin: 0;
+                  padding: 10px;
+                  max-height: 400px;
+                  overflow: auto;
+                  white-space: pre-wrap;
+                  display: none;
+                "
+              ></pre>
+
+              <!-- Unsupported format message -->
+              <div
+                id="unsupported-preview"
+                style="padding: 20px; text-align: center; display: none"
+              >
+                <p>Preview not available for this file type</p>
+              </div>
+            </div>
+          </div>
+
           <div class="print-options">
             <h3>Print Options</h3>
 
@@ -528,12 +596,16 @@
         fileUpload.style.borderColor = "#ddd";
 
         if (e.dataTransfer.files.length) {
+          // Clear any previous conversion status
+          conversionStatus.style.display = "none";
           handleFileSelection(e.dataTransfer.files[0]);
         }
       });
 
       fileUploadInput.addEventListener("change", (e) => {
         if (e.target.files.length) {
+          // Clear any previous conversion status
+          conversionStatus.style.display = "none";
           handleFileSelection(e.target.files[0]);
         }
       });
@@ -549,6 +621,109 @@
 
         // Store file path for printing
         printBtn.setAttribute("data-file-path", file.path);
+
+        // Generate and display file preview
+        showFilePreview(file.path);
+      }
+
+      // File preview handling
+      const filePreviewContainer = document.getElementById(
+        "file-preview-container"
+      );
+      const previewLoading = document.getElementById("preview-loading");
+      const previewError = document.getElementById("preview-error");
+      const imagePreview = document.getElementById("image-preview");
+      const pdfPreview = document.getElementById("pdf-preview");
+      const textPreview = document.getElementById("text-preview");
+      const unsupportedPreview = document.getElementById("unsupported-preview");
+
+      // Track the current file being previewed
+      let currentPreviewFile = null;
+
+      async function showFilePreview(filePath) {
+        // Store current file being previewed
+        currentPreviewFile = filePath;
+
+        // Reset preview elements
+        filePreviewContainer.style.display = "block";
+        previewLoading.style.display = "block";
+        previewError.style.display = "none";
+        imagePreview.style.display = "none";
+        pdfPreview.style.display = "none";
+        textPreview.style.display = "none";
+        unsupportedPreview.style.display = "none";
+
+        // Hide any previous conversion status
+        conversionStatus.style.display = "none";
+
+        try {
+          // Request preview from main process
+          const previewData = await ipcRenderer.invoke(
+            "generate-preview",
+            filePath
+          );
+
+          // Hide loading indicator
+          previewLoading.style.display = "none";
+
+          // Display preview based on type
+          switch (previewData.type) {
+            case "image":
+              imagePreview.src = `file://${previewData.path}`;
+              imagePreview.style.display = "block";
+              break;
+
+            case "pdf":
+              pdfPreview.src = `file://${previewData.path}`;
+              pdfPreview.style.display = "block";
+              break;
+
+            case "text":
+              textPreview.textContent = previewData.content;
+              textPreview.style.display = "block";
+              break;
+
+            case "converting":
+              // Preview will be updated when conversion is complete
+              // The loading indicator remains visible
+              previewLoading.style.display = "block";
+
+              // Show conversion status
+              conversionStatus.className = "conversion-status";
+              const fileName = filePath.split(/[\\/]/).pop();
+              conversionMessage.textContent = `Converting ${fileName} to PDF...`;
+              conversionStatus.style.display = "flex";
+              break;
+
+            case "unsupported":
+              unsupportedPreview.style.display = "block";
+              break;
+
+            case "error":
+              previewError.style.display = "block";
+              previewError.querySelector(
+                "p"
+              ).textContent = `Error loading preview: ${previewData.error}`;
+
+              // Show error in conversion status as well
+              conversionStatus.className = "conversion-status error";
+              conversionMessage.textContent = `Error loading preview: ${previewData.error}`;
+              conversionStatus.style.display = "flex";
+              break;
+          }
+        } catch (error) {
+          console.error("Error showing preview:", error);
+          previewLoading.style.display = "none";
+          previewError.style.display = "block";
+          previewError.querySelector(
+            "p"
+          ).textContent = `Error loading preview: ${error.message}`;
+
+          // Show error in conversion status as well
+          conversionStatus.className = "conversion-status error";
+          conversionMessage.textContent = `Error loading preview: ${error.message}`;
+          conversionStatus.style.display = "flex";
+        }
       }
 
       // Print button
@@ -602,6 +777,28 @@
       });
 
       // IPC communication with main process
+      ipcRenderer.on("file-preview", (event, previewData) => {
+        // Update preview after conversion
+        if (previewData.type === "pdf") {
+          // Hide loading indicator
+          previewLoading.style.display = "none";
+
+          // Display PDF preview
+          pdfPreview.src = `file://${previewData.path}`;
+          pdfPreview.style.display = "block";
+
+          // Update conversion status to show success
+          conversionStatus.className = "conversion-status success";
+          conversionMessage.textContent = `Successfully converted to PDF`;
+          conversionStatus.style.display = "flex";
+
+          // Hide the success message after 5 seconds
+          setTimeout(() => {
+            conversionStatus.style.display = "none";
+          }, 5000);
+        }
+      });
+
       ipcRenderer.on("connection-status", (event, status) => {
         if (status === "connected") {
           statusDot.className = "status-dot status-connected";
@@ -733,6 +930,7 @@
           // Clear file selection
           fileUploadInput.value = "";
           selectedFileInfo.style.display = "none";
+          filePreviewContainer.style.display = "none";
           printBtn.removeAttribute("data-file-path");
           printBtn.disabled = true;
         } else {
