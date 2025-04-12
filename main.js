@@ -16,9 +16,12 @@ const log = require("electron-log");
 const libreOfficeInstaller = require("./utils/libreoffice-installer");
 
 app.whenReady().then(async () => {
-  // Ensure LibreOffice is installed
+  // Ensure LibreOffice is installed before proceeding
+  // This will show a blocking progress UI to the user
   try {
+    log.info("Starting LibreOffice installation check/process...");
     await libreOfficeInstaller.install();
+    log.info("LibreOffice installation process completed");
   } catch (error) {
     log.error("Failed to install LibreOffice:", error);
     dialog.showErrorBox(
