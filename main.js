@@ -1,4 +1,12 @@
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  Tray,
+  Menu,
+  Notification,
+} = require("electron");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
@@ -302,12 +310,47 @@ async function startServer() {
 
     connectedClients.push(clientInfo);
 
-    // Notify server window about new client
+    // Show native notification for new client connection
+    if (serverWindow) {
+      const notification = new Notification({
+        title: "New Client Connected",
+        body: `${clientInfo.name} (${clientInfo.address}) has connected to the print server.`,
+        icon: path.join(__dirname, "assets", "icon.png"),
+        silent: false,
+      });
+
+      notification.show();
+
+      notification.on("click", () => {
+        if (serverWindow.isMinimized()) serverWindow.restore();
+        serverWindow.focus();
+      });
+    }
+
+    // Show native notification for new client connection
+    if (serverWindow) {
+      const notification = new Notification({
+        title: "New Client Connected",
+        body: `${clientInfo.name} (${clientInfo.address}) has connected to the print server.`,
+        icon: path.join(__dirname, "assets", "icon.png"),
+        silent: false,
+      });
+
+      notification.show();
+
+      notification.on("click", () => {
+        if (serverWindow.isMinimized()) serverWindow.restore();
+        serverWindow.focus();
+      });
+    }
+
+    // Notify server window about new client and send updated client list
     if (serverWindow) {
       serverWindow.webContents.send(
         "connected-clients",
         connectedClients.length
       );
+      serverWindow.webContents.send("client-list", connectedClients);
     }
 
     // Handle client disconnect
@@ -322,14 +365,24 @@ async function startServer() {
         connectedClients.splice(index, 1);
       }
 
-      // Notify server window about client disconnect
+      // Notify server window about client disconnect and send updated client list
       if (serverWindow) {
         serverWindow.webContents.send(
           "connected-clients",
           connectedClients.length
         );
+        serverWindow.webContents.send("client-list", connectedClients);
       }
     });
+  });
+
+  // Handle force disconnect request from server window
+  ipcMain.on("force-disconnect-client", (event, clientId) => {
+    const socket = io.sockets.sockets.get(clientId);
+    if (socket) {
+      console.log("Force disconnecting client:", clientId);
+      socket.disconnect(true);
+    }
   });
 
   // Start the server

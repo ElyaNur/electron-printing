@@ -171,6 +171,43 @@
         color: #666;
         font-style: italic;
       }
+      .client-list {
+        margin-top: 20px;
+      }
+      .client-item {
+        background-color: #fff;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 15px;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .client-info {
+        flex: 1;
+      }
+      .client-name {
+        font-weight: bold;
+        font-size: 16px;
+        margin-bottom: 5px;
+      }
+      .client-id {
+        color: #666;
+        font-size: 14px;
+      }
+      .disconnect-btn {
+        background-color: #e74c3c;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+      .disconnect-btn:hover {
+        background-color: #c0392b;
+      }
     </style>
   </head>
   <body>
@@ -201,7 +238,7 @@
       <div class="tabs">
         <div class="tab active" data-tab="printers">Shared Printers</div>
         <div class="tab" data-tab="jobs">Print Jobs</div>
-        <div class="tab" data-tab="settings">Settings</div>
+        <div class="tab" data-tab="clients">Connected Clients</div>
       </div>
 
       <div id="printers-tab" class="tab-content active">
@@ -224,6 +261,10 @@
         <div id="job-list" class="job-list">
           <div class="no-items">No recent print jobs</div>
         </div>
+      </div>
+
+      <div id="clients-tab" class="tab-content">
+        <div id="client-list" class="client-list"></div>
       </div>
 
       <div id="settings-tab" class="tab-content">
@@ -293,6 +334,34 @@
         });
       });
 
+      function renderClientList(clients) {
+        const clientListElement = document.getElementById("client-list");
+        if (!clients || clients.length === 0) {
+          clientListElement.innerHTML =
+            '<div class="no-items">No clients connected</div>';
+          return;
+        }
+
+        clientListElement.innerHTML = clients
+          .map(
+            (client) => `
+          <div class="client-item">
+            <div class="client-info">
+              <div class="client-name">${client.name}</div>
+              <div class="client-id">ID: ${client.id}</div>
+              <div class="client-address">Address: ${client.address}</div>
+            </div>
+            <button class="disconnect-btn" onclick="disconnectClient('${client.id}')">Disconnect</button>
+          </div>
+        `
+          )
+          .join("");
+      }
+
+      function disconnectClient(clientId) {
+        ipcRenderer.send("force-disconnect-client", clientId);
+      }
+
       // IPC communication with main process
       ipcRenderer.on("server-status", (event, status) => {
         const statusDot = document.getElementById("status-dot");
@@ -309,6 +378,10 @@
 
       ipcRenderer.on("connected-clients", (event, count) => {
         document.getElementById("connected-clients").textContent = count;
+      });
+
+      ipcRenderer.on("client-list", (event, clients) => {
+        renderClientList(clients);
       });
 
       // Printer list
